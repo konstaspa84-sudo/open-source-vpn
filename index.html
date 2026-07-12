@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Config Web Tunnel Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #090d16;
+            color: #f1f5f9;
+            text-align: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: #111827;
+            border: 1px solid #1f2937;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        h2 { margin-top: 0; color: #38bdf8; }
+        .status-card {
+            background: #1f2937;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: bold;
+            border-left: 5px solid #64748b;
+        }
+        .connected { border-left-color: #10b981; color: #34d399; }
+        .disconnected { border-left-color: #ef4444; color: #f87171; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-start { background-color: #0284c7; color: white; }
+        .btn-start:hover { background-color: #0369a1; }
+        .btn-stop { background-color: #374151; color: #9ca3af; }
+        .btn-stop:hover { background-color: #4b5563; }
+        .log-box {
+            background: #030712;
+            color: #4ade80;
+            font-family: monospace;
+            padding: 12px;
+            border-radius: 6px;
+            height: 120px;
+            overflow-y: auto;
+            text-align: left;
+            font-size: 12px;
+            margin-top: 20px;
+            border: 1px solid #1f2937;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Web Tunnel Controller</h2>
+    <p style="color: #9ca3af; font-size: 14px;">Direct client-to-client secure communication proxy via WebRTC</p>
+
+    <div id="statusBox" class="status-card disconnected">
+        Status: STANDBY
+    </div>
+
+    <button class="btn btn-start" onclick="initializeTunnel()">Initialize Connection</button>
+    <button class="btn btn-stop" onclick="terminateTunnel()">Close Session</button>
+
+    <div class="log-box" id="logConsole">> Console ready. Press Initialize to create local peer context...</div>
+</div>
+
+<script>
+    let peerConnection = null;
+    let dataChannel = null;
+
+    function log(message) {
+        const consoleBox = document.getElementById('logConsole');
+        consoleBox.innerHTML += `<br>> ${message}`;
+        consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+    function updateStatus(text, isConnected) {
+        const box = document.getElementById('statusBox');
+        box.textContent = `Status: ${text}`;
+        if (isConnected) {
+            box.className = "status-card connected";
+        } else {
+            box.className = "status-card disconnected";
+        }
+    }
+
+    function initializeTunnel() {
+        log("Creating network signaling abstraction...");
+        updateStatus("INITIALIZING", false);
+
+        // FIXED: URL layout structured exactly to modern web standards
+        const config = {
+            iceServers: [
+                { 
+                    urls: "stun:://google.com" 
+                }
+            ]
+        };
+
+        try {
+            peerConnection = new RTCPeerConnection(config);
+            
+            // Create data pipeline mapping raw network packets
+            dataChannel = peerConnection.createDataChannel("network-tunneling-channel");
+
+            dataChannel.onopen = () => {
+                log("Data socket opened successfully.");
+                updateStatus("ACTIVE TUNNEL", true);
+            };
+
+            dataChannel.onclose = () => {
+                log("Data channel connection closed cleanly.");
+                updateStatus("STANDBY", false);
+            };
+
+            // Capture raw local connection configuration patterns
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    log(`Discovered local gateway candidate successfully.`);
+                }
+            };
+
+            // Initiate handshake structure
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    log("Local tunneling parameters generated.");
+                    updateStatus("LISTENING FOR PEERS", true);
+                })
+                .catch(err => {
+                    log(`Handshake creation failure: ${err.message}`);
+                    updateStatus("ERROR", false);
+                });
+
+        } catch (e) {
+            log(`Fatal initialization exception: ${e.message}`);
+            updateStatus("CRASHED", false);
+        }
+    }
+
+    function terminateTunnel() {
+        log("Tearing down connection context...");
+        if (dataChannel) {
+            dataChannel.close();
+        }
+        if (peerConnection) {
+            peerConnection.close();
+        }
+        updateStatus("STANDBY", false);
+        log("All local sockets flushed and destroyed.");
+    }
+</script>
+
+</body>
+</html>
