@@ -2,170 +2,269 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zero-Config Web Tunnel Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Simple Dodge Game</title>
     <style>
+        /* Minimalist, non-flashy styling */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #090d16;
-            color: #f1f5f9;
-            text-align: center;
-            padding: 40px 20px;
+            font-family: sans-serif;
+            background-color: #f4f4f4;
+            color: #333333;
             margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
         }
+
         .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: #111827;
-            border: 1px solid #1f2937;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-        }
-        h2 { margin-top: 0; color: #38bdf8; }
-        .status-card {
-            background: #1f2937;
+            text-align: center;
+            background: #ffffff;
             padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            font-weight: bold;
-            border-left: 5px solid #64748b;
-        }
-        .connected { border-left-color: #10b981; color: #34d399; }
-        .disconnected { border-left-color: #ef4444; color: #f87171; }
-        .btn {
-            display: block;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
             width: 100%;
-            padding: 14px;
-            margin: 10px 0;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
+            max-width: 400px;
+            box-sizing: border-box;
         }
-        .btn-start { background-color: #0284c7; color: white; }
-        .btn-start:hover { background-color: #0369a1; }
-        .btn-stop { background-color: #374151; color: #9ca3af; }
-        .btn-stop:hover { background-color: #4b5563; }
-        .log-box {
-            background: #030712;
-            color: #4ade80;
-            font-family: monospace;
-            padding: 12px;
-            border-radius: 6px;
-            height: 120px;
-            overflow-y: auto;
-            text-align: left;
+
+        /* Simple Canvas */
+        canvas {
+            background-color: #222222;
+            display: block;
+            margin: 10px auto;
+            border: 1px solid #000000;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .btn {
+            background-color: #e0e0e0;
+            color: #000000;
+            border: 1px solid #999999;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            text-transform: lowercase;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background-color: #d0d0d0;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Mobile touch controls (only visible/useful on mobile devices) */
+        .controls-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            width: 100%;
+        }
+
+        .control-btn {
+            background-color: #e0e0e0;
+            border: 1px solid #999999;
+            width: 45%;
+            height: 60px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #333333;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .control-btn:active {
+            background-color: #cccccc;
+        }
+
+        .info-text {
             font-size: 12px;
-            margin-top: 20px;
-            border: 1px solid #1f2937;
+            color: #666666;
+            margin-top: 5px;
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Web Tunnel Controller</h2>
-    <p style="color: #9ca3af; font-size: 14px;">Direct client-to-client secure communication proxy via WebRTC</p>
+    <div class="container">
+        <h4 style="font-weight: normal; margin: 0 0 10px 0;">dodge</h4>
+        
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        
+        <div id="score-board">score: 0</div>
+        <div id="difficulty-board" class="info-text">speed level: 1</div>
+        
+        <button id="restart-btn" class="btn hidden" onclick="resetGame()">play again</button>
 
-    <div id="statusBox" class="status-card disconnected">
-        Status: STANDBY
+        <div class="controls-container">
+            <button id="left-btn" class="control-btn">◀</button>
+            <button id="right-btn" class="control-btn">▶</button>
+        </div>
+        
+        <div class="info-text" style="margin-top: 10px;">
+            controls: left/right keys or on-screen buttons
+        </div>
     </div>
 
-    <button class="btn btn-start" onclick="initializeTunnel()">Initialize Connection</button>
-    <button class="btn btn-stop" onclick="terminateTunnel()">Close Session</button>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreBoard = document.getElementById('score-board');
+        const difficultyBoard = document.getElementById('difficulty-board');
+        const restartBtn = document.getElementById('restart-btn');
 
-    <div class="log-box" id="logConsole">> Console ready. Press Initialize to create local peer context...</div>
-</div>
-
-<script>
-    let peerConnection = null;
-    let dataChannel = null;
-
-    function log(message) {
-        const consoleBox = document.getElementById('logConsole');
-        consoleBox.innerHTML += `<br>> ${message}`;
-        consoleBox.scrollTop = consoleBox.scrollHeight;
-    }
-
-    function updateStatus(text, isConnected) {
-        const box = document.getElementById('statusBox');
-        box.textContent = `Status: ${text}`;
-        if (isConnected) {
-            box.className = "status-card connected";
-        } else {
-            box.className = "status-card disconnected";
-        }
-    }
-
-    function initializeTunnel() {
-        log("Creating network signaling abstraction...");
-        updateStatus("INITIALIZING", false);
-
-        // FIXED: URL layout structured exactly to modern web standards
-        const config = {
-            iceServers: [
-                { 
-                    urls: "stun:://google.com" 
-                }
-            ]
+        // Player configuration
+        let player = { 
+            x: 185, 
+            y: 350, 
+            width: 30, 
+            height: 30, 
+            speed: 6 
         };
 
-        try {
-            peerConnection = new RTCPeerConnection(config);
+        let obstacles = [];
+        let score = 0;
+        let gameOver = false;
+        let keys = {};
+        let gameInterval;
+        let spawnCounter = 0;
+
+        // Difficulty variables
+        let baseSpeed = 2.5; 
+        let spawnRate = 45; // lower means more frequent spawns
+        let currentLevel = 1;
+
+        // Keyboard Event Listeners
+        window.addEventListener('keydown', (e) => { keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+        // Touch Control Listeners (for Mobile Support)
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+
+        let touchLeft = false;
+        let touchRight = false;
+
+        leftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchLeft = true; });
+        leftBtn.addEventListener('touchend', () => { touchLeft = false; });
+        rightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchRight = true; });
+        rightBtn.addEventListener('touchend', () => { touchRight = false; });
+
+        // Start game immediately on load
+        resetGame();
+
+        function resetGame() {
+            player.x = canvas.width / 2 - player.width / 2;
+            obstacles = [];
+            score = 0;
+            baseSpeed = 2.5;
+            spawnRate = 45;
+            currentLevel = 1;
+            gameOver = false;
+            spawnCounter = 0;
             
-            // Create data pipeline mapping raw network packets
-            dataChannel = peerConnection.createDataChannel("network-tunneling-channel");
+            scoreBoard.innerText = "score: " + score;
+            difficultyBoard.innerText = "speed level: " + currentLevel;
+            restartBtn.classList.add('hidden');
+            
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(updateGame, 1000 / 60); // 60 FPS update loop
+        }
 
-            dataChannel.onopen = () => {
-                log("Data socket opened successfully.");
-                updateStatus("ACTIVE TUNNEL", true);
-            };
+        function updateGame() {
+            if (gameOver) return;
 
-            dataChannel.onclose = () => {
-                log("Data channel connection closed cleanly.");
-                updateStatus("STANDBY", false);
-            };
+            // Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Capture raw local connection configuration patterns
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    log(`Discovered local gateway candidate successfully.`);
-                }
-            };
+            // Move Player (supports keyboard and touch inputs)
+            if ((keys['ArrowLeft'] || touchLeft) && player.x > 0) {
+                player.x -= player.speed;
+            }
+            if ((keys['ArrowRight'] || touchRight) && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            }
 
-            // Initiate handshake structure
-            peerConnection.createOffer()
-                .then(offer => peerConnection.setLocalDescription(offer))
-                .then(() => {
-                    log("Local tunneling parameters generated.");
-                    updateStatus("LISTENING FOR PEERS", true);
-                })
-                .catch(err => {
-                    log(`Handshake creation failure: ${err.message}`);
-                    updateStatus("ERROR", false);
+            // Draw Player (Low profile gray square)
+            ctx.fillStyle = '#888888';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Difficulty progression (Scaling parameters smoothly)
+            // Caps max speed and min frequency to keep it possible but very challenging
+            currentLevel = Math.floor(score / 5) + 1;
+            difficultyBoard.innerText = "speed level: " + currentLevel;
+            
+            let currentBaseSpeed = baseSpeed + (currentLevel * 0.4); // increases obstacle speed
+            let currentSpawnRate = Math.max(18, spawnRate - (currentLevel * 2)); // increases rate of obstacles
+
+            // Spawn Obstacles
+            spawnCounter++;
+            if (spawnCounter >= currentSpawnRate) {
+                spawnCounter = 0;
+                let size = Math.random() * 25 + 15; // Random size variation
+                let xPos = Math.random() * (canvas.width - size);
+                obstacles.push({ 
+                    x: xPos, 
+                    y: -size, 
+                    width: size, 
+                    height: size, 
+                    speed: currentBaseSpeed + (Math.random() * 1.5) // slight variation per block
                 });
+            }
 
-        } catch (e) {
-            log(`Fatal initialization exception: ${e.message}`);
-            updateStatus("CRASHED", false);
-        }
-    }
+            // Update & Draw Obstacles
+            for (let i = 0; i < obstacles.length; i++) {
+                let obs = obstacles[i];
+                obs.y += obs.speed;
 
-    function terminateTunnel() {
-        log("Tearing down connection context...");
-        if (dataChannel) {
-            dataChannel.close();
-        }
-        if (peerConnection) {
-            peerConnection.close();
-        }
-        updateStatus("STANDBY", false);
-        log("All local sockets flushed and destroyed.");
-    }
-</script>
+                // Draw Obstacle
+                ctx.fillStyle = '#555555';
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
 
+                // Simple collision check
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    endGame();
+                }
+
+                // Score tracking & cleanup
+                if (obs.y > canvas.height) {
+                    obstacles.splice(i, 1);
+                    i--;
+                    score++;
+                    scoreBoard.innerText = "score: " + score;
+                }
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            clearInterval(gameInterval);
+            
+            // Render basic Game Over screen state
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("game over", canvas.width / 2, canvas.height / 2 - 10);
+            ctx.fillText("final score: " + score, canvas.width / 2, canvas.height / 2 + 20);
+            
+            restartBtn.classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>
